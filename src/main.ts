@@ -1,0 +1,17 @@
+import { createApp } from 'vue'
+import '@fontsource/noto-sans-thai/thai-400.css'
+import '@fontsource/noto-sans-thai/thai-600.css'
+import '@fontsource/noto-sans-thai/thai-700.css'
+import '@fontsource/noto-sans-thai/latin-400.css'
+import '@fontsource/noto-sans-thai/latin-600.css'
+import '@fontsource/noto-sans-thai/latin-700.css'
+import '@fontsource/sarabun/thai-400.css'
+import '@fontsource/sarabun/thai-600.css'
+import '@fontsource/sarabun/thai-700.css'
+import '@fontsource/sarabun/latin-400.css'
+import '@fontsource/sarabun/latin-600.css'
+import '@fontsource/sarabun/latin-700.css'
+import './style.css'
+import Root from './Root.vue'
+
+createApp(Root).mount('#app')
