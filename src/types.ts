@@ -1,3 +1,5 @@
+import type { Toc } from './toc/model'
+
 // rTop/rBottom: ความโค้งมุมนอกบน/ล่างของแถบนี้ (px); ไม่ตั้ง = ใช้ค่ารวม radius
 export interface Tab { id: string; num: string; th: string; th2?: string; color: string; rTop?: number; rBottom?: number }
 
@@ -28,6 +30,7 @@ export interface Project {
   bgY: number
   bgZoom: number
   bg: string         // data URL หรือ ''
+  toc?: Toc          // หน้าสารบัญ (ไม่มีในโปรเจกต์เก่า)
 }
 
 export const PAGE_W = 1240

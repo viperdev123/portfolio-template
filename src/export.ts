@@ -22,6 +22,8 @@ export const exportTabs = async (p: Project) => save(await render(p, p.active, t
 
 export async function exportZip(p: Project) {
   const zip = new JSZip()
+  // หน้าสารบัญเป็นไฟล์แรกของ ZIP (เฉพาะโปรเจกต์ที่มีหน้าสารบัญและไม่ได้ปิดตัวเลือกนี้ ไม่งั้นผลลัพธ์เหมือนเดิมทุกประการ)
+  if (p.toc?.inZip) zip.file('00-สารบัญ.png', await (await import('./toc/export')).renderToc(p.toc, p.bg, false))
   for (let i = 0; i < p.tabs.length; i++) {
     const name = `${String(i + 1).padStart(2, '0')}-${(p.tabs[i].th || tabNum(p.tabs[i], i)).replace(/[\/:*?"<>|]/g, '_')}.png`
     zip.file(name, await render(p, i, false))
