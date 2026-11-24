@@ -11,6 +11,8 @@ Thumbs.db
 !.vscode/extensions.json
 .idea/
 
-# ผลลัพธ์ export จากเทสต์ (สร้างใหม่ได้ด้วย npm run test:quote)
-docs/quote/export-*.png
-docs/quote/project.json
+# ผลลัพธ์จากเทสต์/screenshot (สร้างใหม่ด้วย npm run test:e2e / test:quote)
+docs/
+test-results/
+playwright-report/
+.claude/

@@ -48,7 +48,7 @@ export PNG (A4 300 DPI / A4 150 DPI / 1080×1350), พื้นโปร่ง�
 ```
 npm run dev            # เทอร์มินัลหนึ่ง (ถ้าแก้โค้ดระหว่าง dev ให้เริ่ม server ใหม่ก่อนรันเทสต์ ไม่งั้น module ซ้ำสองชุด)
 npm run test:e2e       # เครื่องมือแถบสารบัญ
-npm run test:quote     # Quote Page Maker; ภาพทุก template × ทุก preset อยู่ใน docs/quote/ (contact-sheet.png)
+npm run test:quote     # Quote Page Maker; ภาพทุก template × ทุก preset ถูกสร้างลง docs/quote/ (contact-sheet.png; โฟลเดอร์ docs/ ไม่ถูก commit)
 ```
 ตรวจ: คอนทราสต์ preset >= 4.5:1, ขนาด PNG ทั้ง 3 แบบ, alpha, ZIP (ชื่อไทย + UTF-8 flag), พรีวิวเทียบ export ที่พิกเซล (ต่าง < 1%), auto-fit 10/300 ตัวอักษร, undo/redo/ลาก/ย่อ/หมุน/จัดชิด, บันทึก-เปิดโปรเจกต์, รีโหลดแล้วข้อมูลอยู่, รูป 4000×3000
 
