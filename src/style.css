@@ -49,3 +49,35 @@ button:disabled { opacity: .5; cursor: wait; }
 .hdr a { color: #fff; text-decoration: none; padding: 5px 12px; border-radius: 6px; border: 1px solid transparent; }
 .hdr a:hover { border-color: var(--gold); }
 .hdr a.on { background: var(--gold); color: var(--navy-d); font-weight: 700; }
+
+/* ---------- Quote Page Maker ---------- */
+.q-layout { display: grid; grid-template-columns: minmax(0, 1fr) 400px; height: calc(100vh - var(--hdr)); }
+.q-stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.q-tools, .q-pages { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 8px 12px; background: #fff; border-bottom: 1px solid var(--line); }
+.q-pages { border-bottom: 0; border-top: 1px solid var(--line); overflow-x: auto; flex-wrap: nowrap; }
+.q-tools .sep, .q-pages .sep { width: 1px; height: 24px; background: var(--line); }
+.q-tools select { width: auto; }
+.q-scroll { flex: 1; min-height: 0; overflow: auto; }
+.q-center { min-width: 100%; min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 16px; width: max-content; }
+.q-pages .th { padding: 3px; display: grid; gap: 2px; justify-items: center; flex: none; }
+.q-pages .th.on { outline: 3px solid var(--gold); }
+.thb { width: 62px; height: 88px; overflow: hidden; display: block; background: #fff; }
+.ths { display: block; transform: scale(.05); transform-origin: 0 0; width: 1240px; height: 1754px; pointer-events: none; }
+.tpls { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.stop { display: grid; gap: 4px; border: 1px solid var(--line); border-radius: 8px; padding: 6px; }
+.acts { display: flex; gap: 4px; flex-wrap: wrap; }
+.acts button { padding: 3px 8px; }
+.themes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.theme { border: 1px solid var(--line); border-radius: 8px; padding: 6px; display: grid; gap: 4px; position: relative; }
+.theme.on { border-color: var(--gold); background: #FFF9EA; }
+.theme .sw { height: 34px; border: 1px solid #8895b8; }
+.theme .tn { font-size: 13px; }
+.theme .x { position: absolute; top: 2px; right: 2px; padding: 0 6px; }
+textarea { width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; font: inherit; }
+input.n { width: 90px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; font: inherit; }
+.hint { font-size: 13px; opacity: .75; margin: 0; }
+@media (max-width: 900px) {
+  .q-layout { grid-template-columns: 1fr; height: auto; }
+  .q-scroll { height: 70vh; }
+  .panel { max-height: none; }
+}

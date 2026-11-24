@@ -4,6 +4,9 @@ import { newPage, uid } from './elements'
 import { THEMES } from './theme'
 import { applyTemplate } from './templates'
 import { bbox } from './geom'
+import { readImage } from '../shared/export'
+import { mkImage } from './elements'
+import type { ImageEl } from './types'
 
 // state แยกจากเครื่องมือแถบสารบัญโดยสิ้นเชิง (คนละ key / คนละไฟล์ .json)
 const KEY = 'quote-maker:v1'
@@ -141,3 +144,15 @@ export function saveCustomTheme(name: string) {
   customThemes.value.push({ ...t, mids: [...t.mids], id: 'c' + uid(), name: name || `ชุดสีของฉัน ${customThemes.value.length + 1}` })
 }
 export const allThemes = computed(() => [...THEMES, ...customThemes.value])
+
+// ---------- รูป ----------
+export async function loadImageInto(el: ImageEl, f: File) {
+  const r = await readImage(f)
+  el.asset = addAsset(r.src); el.nw = r.w; el.nh = r.h; el.zoom = 1; el.ox = el.oy = 50
+}
+/** วางรูปลง slot รูปที่ว่างอยู่ ไม่มีก็สร้างองค์ประกอบรูปใหม่ */
+export async function dropImage(f: File, target?: El | null) {
+  let el = target?.kind === 'image' ? target : (els().find(e => e.kind === 'image' && !e.asset) as ImageEl | undefined)
+  if (!el) { el = mkImage({ x: 320, y: 300, w: 600, h: 600 }); addEl(el) }
+  await loadImageInto(el, f); ui.sel = el.id
+}

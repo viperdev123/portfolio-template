@@ -60,5 +60,7 @@ export function applyTemplate(p: Page, id: string) {
   const q = p.elements.find(e => e.slot === 'quote') as TextEl | undefined
   const img = p.elements.find(e => e.slot === 'image') as ImageEl | undefined
   const els = t.build({ text: q?.text ?? DEFAULT_QUOTE, sub: q?.sub ?? DEFAULT_SPEAKER, img })
+  // template ที่ไม่มีช่องรูป: เก็บรูปเดิมไว้แบบซ่อน เพื่อให้กลับมาเมื่อสลับไป template ที่มีรูป
+  if (img?.asset && !els.some(e => e.slot === 'image')) els.push({ ...img, hidden: true })
   p.elements = [...els, ...p.elements.filter(e => !e.tpl)]
 }
