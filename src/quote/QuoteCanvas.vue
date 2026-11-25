@@ -83,13 +83,13 @@ function dbl(el: El) {
 }
 async function picked(ev: Event) {
   const i = ev.target as HTMLInputElement, f = i.files?.[0]
-  if (f && pickFor.value) await loadImageInto(pickFor.value, f).catch(e => alert(e.message))
+  if (f && pickFor.value) await loadImageInto(pickFor.value, f).catch(e => (ui.warn = e.message))
   i.value = ''
 }
 async function onDrop(ev: DragEvent) {
   const f = ev.dataTransfer?.files[0]; if (!f) return
   const id = (ev.target as HTMLElement).closest('[data-id]')?.getAttribute('data-id')
-  await dropImage(f, page.value.elements.find(e => e.id === id)).catch(e => alert(e.message))
+  await dropImage(f, page.value.elements.find(e => e.id === id)).catch(e => (ui.warn = e.message))
 }
 
 const handles: [number, number, string][] = [[-1, -1, 'nwse'], [0, -1, 'ns'], [1, -1, 'nesw'], [1, 0, 'ew'], [1, 1, 'nwse'], [0, 1, 'ns'], [-1, 1, 'nesw'], [-1, 0, 'ew']]

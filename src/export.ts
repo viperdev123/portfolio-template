@@ -20,13 +20,17 @@ const save = download
 export const exportPage = async (p: Project) => save(await render(p, p.active, false), 'portfolio-page.png')
 export const exportTabs = async (p: Project) => save(await render(p, p.active, true), 'portfolio-tabs.png')
 
-export async function exportZip(p: Project) {
-  const zip = new JSZip()
+// onProgress(ทำเสร็จ, ทั้งหมด) สำหรับแสดงความคืบหน้า
+export async function exportZip(p: Project, onProgress?: (done: number, total: number) => void) {
+  const zip = new JSZip(), total = p.tabs.length + (p.toc?.inZip ? 1 : 0)
+  let done = 0
+  const tick = () => onProgress?.(++done, total)
   // หน้าสารบัญเป็นไฟล์แรกของ ZIP (เฉพาะโปรเจกต์ที่มีหน้าสารบัญและไม่ได้ปิดตัวเลือกนี้ ไม่งั้นผลลัพธ์เหมือนเดิมทุกประการ)
-  if (p.toc?.inZip) zip.file('00-สารบัญ.png', await (await import('./toc/export')).renderToc(p.toc, p.bg, false))
+  if (p.toc?.inZip) zip.file('00-สารบัญ.png', await (await import('./toc/export')).renderToc(p.toc, p.bg, false)); tick()
   for (let i = 0; i < p.tabs.length; i++) {
     const name = `${String(i + 1).padStart(2, '0')}-${(p.tabs[i].th || tabNum(p.tabs[i], i)).replace(/[\/:*?"<>|]/g, '_')}.png`
-    zip.file(name, await render(p, i, false))
+    // ZIP เปิดไฮไลต์แถบ active เสมอ ไม่งั้นทุกหน้าจะเหมือนกัน
+    zip.file(name, await render({ ...p, highlight: true }, i, false)); tick()
   }
   save(await zip.generateAsync({ type: 'blob' }), 'portfolio-pages.zip')
 }

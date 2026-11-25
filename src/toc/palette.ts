@@ -1,21 +1,27 @@
 import { PRESETS } from '../presets'
-import { ensureContrast, hex, lum, over, parse, WHITE, worst, type RGB } from './color'
-import type { Toc } from './model'
+import { contrast, ensureContrast, hex, lum, over, parse, WHITE, worst, type RGB } from './color'
+import { filledBadge, specOf, type Toc } from './model'
 import { PAGE_H, PAGE_W } from '../types'
 
 export const CREAM = '#FFFAEC'
+export const ZEBRA = .75 // ความทึบของแถวเว้นแถวในแบบแถบสลับสี (เทียบกับ cardOpacity)
 // mean = สีเฉลี่ย, lo/hi = เฉลี่ยของพิกเซล 10% ที่มืดสุด/สว่างสุด (กันกรณีรูปมีลายมืดเล็ก ๆ ใต้ตัวอักษร)
 export interface Region { mean: RGB; lo: RGB; hi: RGB }
 export interface Backdrop { head: Region; list: Region }
 export interface Colors {
   heading: string; title: string; page: string; num: string; sub: string; accent: string
   cream: string; headSet: RGB[]; listSet: RGB[]
+  ink: string // สีเข้มของพรีเซ็ต ใช้เป็นตัวเลือกสีตัวเลขบนป้ายทึบ
 }
+// สีตัวเลขบนป้ายทึบ (วงกลม/กล่องสี): ขาวหรือสีเข้มของพรีเซ็ต อันที่คอนทราสต์สูงกว่า
+export const onFill = (fill: string, ink: string) => contrast('#FFFFFF', fill) >= contrast(ink, fill) ? '#FFFFFF' : ink
 const flat = (c: RGB): Region => ({ mean: c, lo: c, hi: c })
 
 // พื้นหลังจริงที่ตัวอักษรวางอยู่: ใต้การ์ด/ม่านอ่านง่ายคือครีมทึบบางส่วนทับพื้นเฉลี่ยของรูป
 export function listBackdrop(t: Toc, bgList: RGB): RGB {
-  if (t.layout === 'cards') return over(parse(CREAM), bgList, t.cardOpacity / 100)
+  const panel = specOf(t).panel
+  if (panel === 'card' || panel === 'pill') return over(parse(CREAM), bgList, t.cardOpacity / 100)
+  if (panel === 'zebra') return over(parse(CREAM), bgList, t.cardOpacity * ZEBRA / 100) // แถวที่จางกว่า = กรณีแย่สุด
   if (t.veil) return over(parse(CREAM), bgList, t.veilOpacity * .85 / 100) // ขอบม่านจางกว่ากลาง: ใช้ค่าต่ำสุดของเกรเดียนต์
   return bgList
 }
@@ -33,7 +39,7 @@ export function resolveColors(t: Toc, bd: Backdrop): Colors {
     num: t.numColor || ensureContrast(gold, listSet),
     sub: ensureContrast(hex(over(parse(title), listSet[0], .75)), listSet),
     accent: t.ruleColor || gold,
-    cream: CREAM, headSet, listSet,
+    cream: CREAM, headSet, listSet, ink: dark,
   }
 }
 
@@ -42,9 +48,11 @@ export function contrastReport(t: Toc, c: Colors): Check[] {
   const mk = (label: string, fg: string, bg: RGB[]): Check => { const ratio = worst(fg, bg); return { label, ratio, ok: ratio >= 4.5 } }
   const out = [mk('หัวเรื่อง', c.heading, c.headSet), mk('ชื่อหัวข้อ', c.title, c.listSet)]
   if (t.showPage) out.push(mk('เลขหน้า', c.page, c.listSet))
-  const nums = new Set<string>([c.num])
+  const filled = filledBadge(specOf(t)) // ป้ายทึบ: สีรายการ = สีป้าย, ตรวจตัวเลขเทียบสีป้าย
+  const nums = new Set<string>([filled ? c.accent : c.num])
   if (t.perItemColor) t.items.forEach(i => i.color && nums.add(i.color))
-  for (const n of nums) out.push(mk('เลขลำดับ ' + n.toUpperCase(), n, c.listSet))
+  if (filled) for (const f of nums) out.push(mk('เลขลำดับบนสี ' + f.toUpperCase(), t.numColor || onFill(f, c.ink), [parse(f)]))
+  else for (const n of nums) out.push(mk('เลขลำดับ ' + n.toUpperCase(), n, c.listSet))
   return out
 }
 

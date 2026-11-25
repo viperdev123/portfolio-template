@@ -49,8 +49,11 @@ async function render(p: Page, assets: Record<string, string>, size: SizeId, tra
 
 export const exportPage = async (p: Page, a: Record<string, string>, s: SizeId) => download(await render(p, a, s, false), 'quote-page.png')
 export const exportTransparent = async (p: Page, a: Record<string, string>, s: SizeId) => download(await render(p, a, s, true), 'quote-elements.png')
-export async function exportZip(pages: Page[], a: Record<string, string>, s: SizeId) {
+export async function exportZip(pages: Page[], a: Record<string, string>, s: SizeId, onProgress?: (done: number, total: number) => void) {
   const zip = new JSZip()
-  for (let i = 0; i < pages.length; i++) zip.file(`${String(i + 1).padStart(2, '0')}-คำคม.png`, await render(pages[i], a, s, false))
+  for (let i = 0; i < pages.length; i++) {
+    zip.file(`${String(i + 1).padStart(2, '0')}-คำคม.png`, await render(pages[i], a, s, false))
+    onProgress?.(i + 1, pages.length)
+  }
   download(await zip.generateAsync({ type: 'blob' }), 'quote-pages.zip')
 }

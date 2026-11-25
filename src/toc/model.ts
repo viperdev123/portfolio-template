@@ -1,6 +1,32 @@
 import { PRESETS } from '../presets'
 
-export type TocLayout = 'list' | 'cards' | 'circle'
+export type TocLayout = 'list' | 'cards' | 'circle' | 'pill' | 'outline' | 'zebra' | 'timeline' | 'square' | 'bignum' | 'block'
+
+// เลย์เอาต์ = การผสมชิ้นส่วน: panel พื้นของแถว, badge กรอบเลขลำดับ (disc/square/block ทึบสี accent), cap เลขหน้าในแคปซูล,
+// line เส้นไทม์ไลน์เชื่อมวงกลม, big เลขใหญ่ + เส้นคั่นแนวตั้ง, rule เส้นคั่นระหว่างแถว
+export interface LayoutSpec {
+  name: string
+  panel?: 'card' | 'pill' | 'outline' | 'zebra'
+  badge?: 'ring' | 'disc' | 'square' | 'block'
+  cap?: boolean; line?: boolean; big?: boolean; rule?: boolean
+}
+export const LAYOUTS: Record<TocLayout, LayoutSpec> = {
+  list: { name: 'A รายการเรียบ', rule: true },
+  cards: { name: 'B การ์ดโปร่งแสง', panel: 'card' },
+  circle: { name: 'C เลขในวงกลม', badge: 'ring', cap: true },
+  pill: { name: 'D แคปซูล', panel: 'pill', badge: 'disc' },
+  outline: { name: 'E การ์ดเส้นขอบ', panel: 'outline' },
+  zebra: { name: 'F แถบสลับสี', panel: 'zebra' },
+  timeline: { name: 'G ไทม์ไลน์', badge: 'ring', line: true },
+  square: { name: 'H เลขในกล่องสี', badge: 'square', rule: true },
+  bignum: { name: 'I เลขใหญ่', big: true },
+  block: { name: 'J การ์ดเลขแถบสี', panel: 'card', badge: 'block' },
+}
+export const specOf = (t: { layout: TocLayout }) => LAYOUTS[t.layout] ?? LAYOUTS.list
+// พื้นแถวทึบ (ครีมโปร่งแสง) = ตัวอักษรวางบนครีม ไม่ใช้ม่านช่วยอ่าน
+export const filledPanel = (s: LayoutSpec) => s.panel === 'card' || s.panel === 'pill' || s.panel === 'zebra'
+// ป้ายเลขทึบสี: ตัวเลขวางบนสีป้าย ไม่ใช่บนพื้นหน้า
+export const filledBadge = (s: LayoutSpec) => s.badge === 'disc' || s.badge === 'square' || s.badge === 'block'
 export interface TocItem {
   id: string
   num: string    // '' = ลำดับอัตโนมัติ 01, 02…
@@ -92,7 +118,7 @@ export function migrateToc(raw: unknown): Toc {
     ? (raw as Toc).items.slice(0, MAX_ITEMS).map(i => ({ ...blankItem(), ...i, id: i?.id || uid() }))
     : d.items
   while (r.items.length < MIN_ITEMS) r.items.push(blankItem())
-  if (!['list', 'cards', 'circle'].includes(r.layout)) r.layout = 'list'
+  if (!(r.layout in LAYOUTS)) r.layout = 'list'
   r.preset = Math.round(num(r.preset, 0, 0, PRESETS.length - 1))
   r.cardOpacity = num(r.cardOpacity, 80, 40, 95)
   r.bottomSafe = num(r.bottomSafe, 150, 40, 600)

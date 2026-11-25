@@ -75,6 +75,7 @@ watch(() => Object.keys(assets).length, () => { saveT = setTimeout(() => {
 export const toJSON = () => JSON.stringify({ app: 'quote-maker', version: 1, project, assets: pick() })
 export function fromJSON(text: string) {
   const d = JSON.parse(text)
+  if (Array.isArray(d?.tabs)) throw new Error('ไฟล์นี้เป็นของแถบสารบัญ/หน้าสารบัญ — เปิดที่แท็บแถบสารบัญหรือหน้าสารบัญ')
   if (d?.app !== 'quote-maker' || d.version !== 1 || !Array.isArray(d.project?.pages) || !d.project.pages.length) throw new Error('ไม่ใช่ไฟล์โปรเจกต์ Quote Page Maker')
   project.pages = d.project.pages; project.current = d.project.current
   Object.keys(assets).forEach(k => delete assets[k]); Object.assign(assets, d.assets ?? {})

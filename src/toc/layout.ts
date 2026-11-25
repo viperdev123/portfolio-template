@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import type { Toc, TocItem } from './model'
+import { filledPanel, specOf, type Toc, type TocItem } from './model'
 import { PAGE_H, PAGE_W } from '../types'
 
 // ---------- การวัดข้อความ (canvas) ----------
@@ -72,7 +72,7 @@ export interface Geo {
 export const LIST_L = 120, LIST_R = PAGE_W - 120
 
 export function computeGeo(t: Toc, m: Measure): Geo {
-  const n = t.items.length, cards = t.layout === 'cards', circle = t.layout === 'circle'
+  const n = t.items.length, sp = specOf(t), cards = !!sp.panel, circle = !!sp.badge && sp.badge !== 'block', block = sp.badge === 'block', cap = !!sp.cap
   const headTop = 150, headLine = Math.round(t.headingSize * 1.3)
   const ornTop = headTop + headLine + 14
   const contentTop = ornTop + (t.ornament === 'none' ? 0 : 28) + 70
@@ -83,19 +83,19 @@ export function computeGeo(t: Toc, m: Measure): Geo {
   const pageText = (it: TocItem, i: number) => localize(it.page.trim() || String(t.startPage + i), t.numerals)
 
   const build = (f: number) => {
-    const tSize = t.titleSize * f, nSize = t.numSize * f, eSize = tSize * .58, dSize = tSize * .56, pSize = tSize * 1.02
+    const tSize = t.titleSize * f, nSize = t.numSize * f * (sp.big ? 1.5 : 1), eSize = tSize * .58, dSize = tSize * .56, pSize = tSize * 1.02
     const lineH = tSize * 1.32, eLine = eSize * 1.45, dLine = dSize * 1.45
-    const cardPad = cards ? 38 : 0, barW = cards && t.barOn ? 12 : 0
-    const innerL = LIST_L + barW + cardPad, innerR = LIST_R - cardPad
+    const cardPad = cards ? 38 : 0, barW = sp.panel === 'card' && !block && t.barOn ? 12 : 0
+    const innerL = block ? LIST_L : LIST_L + barW + cardPad, innerR = LIST_R - cardPad
     const nums = t.items.map(numText), pages = t.items.map(pageText)
     const numTextW = Math.max(...nums.map(s => m(s, numFont, t.numWeight, nSize)))
     const circleD = circle ? Math.round(Math.max(nSize * 2.1, numTextW + nSize * .9)) : 0
-    const numW = Math.ceil(circle ? circleD : numTextW)
+    const numW = Math.ceil(circle ? circleD : block ? Math.max(nSize * 1.8, numTextW + nSize * .9) : numTextW)
     const pageTextW = t.showPage ? Math.ceil(Math.max(...pages.map(s => m(s, numFont, t.numWeight, pSize)))) : 0
-    const capPad = circle && t.showPage ? pSize * .75 : 0
+    const capPad = cap && t.showPage ? pSize * .75 : 0
     const pageW = t.showPage ? Math.ceil(pageTextW + capPad * 2) : 0
-    const capH = circle && t.showPage ? Math.round(pSize * 1.95) : 0
-    const numGap = Math.max(26, nSize * .5)
+    const capH = cap && t.showPage ? Math.round(pSize * 1.95) : 0
+    const numGap = Math.max(26, nSize * .5) + (sp.big ? 20 : 0) // เลขใหญ่: เว้นที่ให้เส้นคั่นแนวตั้ง
     const titleX = innerL + numW + numGap
     const leaderMin = t.leader !== 'none' && t.showPage ? 80 : 24
     const titleW = innerR - pageW - (t.showPage ? 20 : 0) - titleX - leaderMin
@@ -147,6 +147,6 @@ export function computeGeo(t: Toc, m: Measure): Geo {
     headTop, headLine, ornTop, listL: LIST_L, listR: LIST_R, innerL: b.innerL, innerR: b.innerR,
     numX: b.innerL, numW: b.numW, titleX: b.titleX, titleW: b.titleW, pageX: b.innerR - b.pageW, pageW: b.pageW,
     circleD: b.circleD, capH: b.capH, barW: b.barW, groupTop, groupH, contentTop,
-    veil: t.veil && !cards ? { x: LIST_L - 56, y: groupTop - 44, w: LIST_R - LIST_L + 112, h: groupH + 88 } : null,
+    veil: t.veil && !filledPanel(sp) ? { x: LIST_L - 56, y: groupTop - 44, w: LIST_R - LIST_L + 112, h: groupH + 88 } : null,
   }
 }

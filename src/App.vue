@@ -2,47 +2,31 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import PageCanvas from './components/PageCanvas.vue'
 import { PAGE_H, PAGE_W, stripW, type Tab } from './types'
-import { applyPreset, loadProject, resetProject, saveWarn, state as s, tabNum, uid } from './store'
+import { applyPreset, hist, loadProject, onUndoKey, parseProject, redo, resetProject, saveProject, saveWarn, state as s, tabNum, uid, undo } from './store'
 import { PRESETS } from './presets'
 import { exportPage, exportTabs, exportZip } from './export'
+import { readImage } from './shared/export'
+import { useFit, useRememberPanels } from './shared/ui'
 
 const stage = ref<HTMLElement>()
 const file = ref<HTMLInputElement>()
 const jf = ref<HTMLInputElement>()
-const scale = ref(.4)
+const scale = useFit(stage, PAGE_W, PAGE_H)
 const showGuide = ref(true)
 const busy = ref('')
+const err = ref('')
 const over = ref(false)
-let ro: ResizeObserver
+useRememberPanels()
+onMounted(() => addEventListener('keydown', onUndoKey))
+onBeforeUnmount(() => removeEventListener('keydown', onUndoKey))
 
-function fit() {
-  const el = stage.value!
-  const tall = getComputedStyle(el).position === 'sticky'
-  const w = el.clientWidth - 32, h = el.clientHeight - 70
-  scale.value = Math.max(.1, Math.min(w / PAGE_W, tall ? h / PAGE_H : Infinity))
+async function setBg(f: File | undefined) {
+  if (!f) return
+  err.value = ''
+  try { s.bg = (await readImage(f)).src } catch (e: any) { err.value = e.message }
 }
-onMounted(() => { fit(); ro = new ResizeObserver(fit); ro.observe(stage.value!) })
-onBeforeUnmount(() => ro?.disconnect())
-
-// ย่อรูปที่ยาวเกิน A4@300DPI และแปลงเป็น data URL (กัน canvas tainted + ลดขนาดที่เก็บ)
-function readImage(f: File | undefined) {
-  if (!f || !f.type.startsWith('image/')) return
-  const r = new FileReader()
-  r.onload = () => {
-    const img = new Image()
-    img.onload = () => {
-      const k = Math.min(1, 3508 / Math.max(img.width, img.height))
-      const c = document.createElement('canvas')
-      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k)
-      c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height)
-      s.bg = c.toDataURL('image/jpeg', .92)
-    }
-    img.src = r.result as string
-  }
-  r.readAsDataURL(f)
-}
-function onDrop(e: DragEvent) { over.value = false; readImage(e.dataTransfer?.files[0]) }
-function onPick(e: Event) { readImage((e.target as HTMLInputElement).files?.[0]); (e.target as HTMLInputElement).value = '' }
+function onDrop(e: DragEvent) { over.value = false; setBg(e.dataTransfer?.files[0]) }
+function onPick(e: Event) { setBg((e.target as HTMLInputElement).files?.[0]); (e.target as HTMLInputElement).value = '' }
 
 const addTab = () => {
   if (s.tabs.length >= 8) return
@@ -61,27 +45,46 @@ function move(i: number, d: number) {
   if (s.active === i) s.active = j; else if (s.active === j) s.active = i
 }
 
-async function run(name: string, fn: (p: typeof s) => Promise<void>) {
-  busy.value = name
-  try { await fn(s) } catch (e) { alert('Export ไม่สำเร็จ: ' + e) } finally { busy.value = '' }
+// คลิกแถบในพรีวิว = เลือกเป็น active แล้วเลื่อนแผงไปที่แถวนั้น
+function pickTab(e: MouseEvent) {
+  const li = (e.target as HTMLElement).closest('li')
+  if (!li) return
+  const i = [...li.parentElement!.children].indexOf(li)
+  s.active = i
+  const row = document.querySelectorAll<HTMLElement>('.tabrow')[i]
+  row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  row?.querySelector<HTMLInputElement>('input[aria-label="ชื่อไทย"]')?.focus({ preventScroll: true })
 }
 
-function saveJson() {
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(s)], { type: 'application/json' }))
-  a.download = 'portfolio-project.json'; a.click()
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+// ประมาณความยาวชื่อ (แนวตั้ง) เทียบพื้นที่ที่เหลือในแถบหลังหักเลขลำดับ เส้น และ padding ตาม PageCanvas
+const ctx = document.createElement('canvas').getContext('2d')!
+const overflow = computed(() => {
+  const tabH = s.height / 100 * PAGE_H / s.tabs.length
+  return s.tabs.flatMap((t, i) => {
+    ctx.font = `700 ${s.numSize}px '${s.font}'`
+    const room = tabH - s.numSize * 1.3 - ctx.measureText(tabNum(t, i)).width - 14 - s.numLineThick - s.numGap
+    ctx.font = `700 ${s.thSize}px '${s.font}'`
+    return [t.th, t.th2].some(x => x && ctx.measureText(x).width > room) ? [t.th || tabNum(t, i)] : []
+  })
+})
+
+async function run(fn: (p: typeof s) => Promise<void>) {
+  busy.value = 'กำลังสร้างไฟล์…'; err.value = ''
+  try { await fn(s) } catch (e) { err.value = 'Export ไม่สำเร็จ: ' + e } finally { busy.value = '' }
 }
+const zip = () => run(p => exportZip(p, (d, n) => (busy.value = `กำลังสร้างไฟล์… ${d}/${n}`)))
+
 async function openJson(e: Event) {
   const el = e.target as HTMLInputElement
-  try { if (el.files?.[0]) loadProject(JSON.parse(await el.files[0].text())) } catch { alert('ไฟล์โปรเจกต์ไม่ถูกต้อง') }
+  err.value = ''
+  try { if (el.files?.[0]) loadProject(parseProject(await el.files[0].text())) } catch (x: any) { err.value = x.message }
   el.value = ''
 }
 function setR(t: Tab, k: 'rTop' | 'rBottom', e: Event) {
   const v = (e.target as HTMLInputElement).value
   t[k] = v === '' ? undefined : Math.max(0, Number(v))
 }
-const doReset = () => { if (confirm('รีเซ็ตทุกอย่างกลับค่าเริ่มต้น (รวมรูปพื้นหลัง)?')) resetProject() }
+const doReset = () => { if (confirm('รีเซ็ตทุกอย่างกลับค่าเริ่มต้น (รวมรูปพื้นหลัง)? กด "ย้อน" เพื่อเอาคืนได้')) resetProject() }
 
 const guide = computed(() => ({
   top: s.top + '%', height: s.height + '%', width: stripW(s) + 'px', [s.side]: 0,
@@ -107,7 +110,7 @@ const colors = [
     <main class="stage" ref="stage">
       <div class="stage-box" :style="{ width: PAGE_W * scale + 'px', height: PAGE_H * scale + 'px' }">
         <div class="scaled" data-testid="preview" :style="{ transform: `scale(${scale})`, width: PAGE_W + 'px', height: PAGE_H + 'px' }">
-          <PageCanvas :p="s" :active="s.active" />
+          <PageCanvas :p="s" :active="s.active" @click="pickTab" />
           <div v-if="showGuide" class="guide" :style="guide"></div>
         </div>
       </div>
@@ -116,6 +119,11 @@ const colors = [
 
     <aside class="panel">
       <h1>Portfolio Tab Maker</h1>
+      <div class="undo">
+        <button :disabled="!hist.canUndo" @click="undo" title="ย้อนกลับ (Ctrl+Z)">↶ ย้อน</button>
+        <button :disabled="!hist.canRedo" @click="redo" title="ทำซ้ำ (Ctrl+Shift+Z)">↷ ทำซ้ำ</button>
+      </div>
+      <p v-if="err" class="warn" role="alert">{{ err }}</p>
 
       <details open>
         <summary>พื้นหลัง</summary>
@@ -123,7 +131,7 @@ const colors = [
           <label class="drop" :class="{ over }" tabindex="0" @dragover.prevent="over = true" @dragleave="over = false" @drop.prevent="onDrop"
                  @keydown.enter="file?.click()">
             {{ s.bg ? 'เปลี่ยนรูป (ลากมาวางหรือคลิก)' : 'ลากรูปมาวาง หรือคลิกเพื่อเลือกไฟล์' }}
-            <input ref="file" type="file" accept="image/*" hidden data-testid="bg-input" @change="onPick">
+            <input ref="file" type="file" accept="image/png,image/jpeg,image/webp" hidden data-testid="bg-input" @change="onPick">
           </label>
           <template v-if="s.bg">
             <label class="f">ซูม <span class="v">{{ s.bgZoom.toFixed(2) }}×</span><input type="range" v-model.number="s.bgZoom" min="1" max="3" step="0.01"></label>
@@ -158,6 +166,7 @@ const colors = [
               <button v-if="t.rTop !== undefined || t.rBottom !== undefined" @click="t.rTop = t.rBottom = undefined">ใช้ค่ารวม</button>
             </div>
           </div>
+          <p v-if="overflow.length" class="warn" role="status">ชื่อยาวเกินแถบ: {{ overflow.join(', ') }} — ลดขนาดตัวอักษรไทย หรือเพิ่มความสูงรวมของแถบ</p>
           <button @click="addTab" :disabled="s.tabs.length >= 8">+ เพิ่มแถบ</button>
         </div>
       </details>
@@ -189,13 +198,13 @@ const colors = [
       <details open>
         <summary>บันทึก</summary>
         <div class="group btns">
-          <button class="primary" :disabled="!!busy" @click="run('page', exportPage)">บันทึกหน้านี้ (PNG)</button>
-          <button class="primary" :disabled="!!busy" @click="run('tabs', exportTabs)">บันทึกเฉพาะแถบ (PNG โปร่งใส)</button>
-          <button class="primary" :disabled="!!busy || !s.highlight" @click="run('zip', exportZip)">บันทึกทุกหน้า (ZIP)</button>
-          <p v-if="!s.highlight" class="hint">ZIP ใช้ได้เมื่อเปิด "ไฮไลต์แถบ active" (ไม่งั้นทุกหน้าจะเหมือนกัน)</p>
-          <p v-if="busy" class="hint">กำลังสร้างไฟล์…</p>
+          <button class="primary" :disabled="!!busy" @click="run(exportPage)">บันทึกหน้านี้ (PNG)</button>
+          <button class="primary" :disabled="!!busy" @click="run(exportTabs)">บันทึกเฉพาะแถบ (PNG โปร่งใส)</button>
+          <button class="primary" :disabled="!!busy" @click="zip">บันทึกทุกหน้า (ZIP)</button>
+          <p class="hint">ZIP ไฮไลต์แถบของแต่ละหน้าให้อัตโนมัติ</p>
+          <p v-if="busy" class="hint" role="status">{{ busy }}</p>
           <hr style="width:100%">
-          <button @click="saveJson">บันทึกโปรเจกต์ (.json)</button>
+          <button @click="saveProject">บันทึกโปรเจกต์ (.json)</button>
           <label class="drop" tabindex="0" @keydown.enter="jf?.click()">เปิดโปรเจกต์
             <input ref="jf" type="file" accept=".json,application/json" hidden @change="openJson">
           </label>

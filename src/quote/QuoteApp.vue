@@ -17,6 +17,7 @@ import {
 } from './store'
 import { SIZES, exportPage, exportTransparent, exportZip, type SizeId } from './export'
 import { download, readImage } from '../shared/export'
+import { useRememberPanels } from '../shared/ui'
 import { addAsset } from './store'
 
 const stage = ref<HTMLElement>()
@@ -24,6 +25,8 @@ const zoom = ref<'fit' | number>('fit')
 const fitScale = ref(.4)
 const size = ref<SizeId>('a4')
 const busy = ref('')
+const err = ref('')
+useRememberPanels()
 const themeName = ref('')
 let ro: ResizeObserver
 
@@ -55,7 +58,8 @@ const addDeco = (e: Event) => { const s = e.target as HTMLSelectElement; if (s.v
 const bg = computed(() => page.value.bg)
 async function pickBg(e: Event) {
   const i = e.target as HTMLInputElement, f = i.files?.[0]
-  if (f) try { const r = await readImage(f); bg.value.asset = addAsset(r.src); bg.value.mode = 'image' } catch (x: any) { alert(x.message) }
+  err.value = ''
+  if (f) try { const r = await readImage(f); bg.value.asset = addAsset(r.src); bg.value.mode = 'image' } catch (x: any) { err.value = x.message }
   i.value = ''
 }
 const addStop = () => { if (bg.value.stops.length < 4) bg.value.stops.push({ color: '@accent', pos: 100 }) }
@@ -87,21 +91,23 @@ const lowContrastTheme = (t: Theme) => themeContrast(t) < 4.5
 const swatch = (t: Theme) => `linear-gradient(135deg, ${t.bg1} 0 50%, ${t.accent} 50% 75%, ${t.text} 75%)`
 
 // ---------- บันทึก ----------
-async function run(name: string, fn: () => Promise<void>) {
-  busy.value = name
-  try { await fn() } catch (e) { alert('Export ไม่สำเร็จ: ' + e) } finally { busy.value = '' }
+async function run(fn: () => Promise<void>) {
+  busy.value = 'กำลังสร้างไฟล์…'; err.value = ''
+  try { await fn() } catch (e) { err.value = 'Export ไม่สำเร็จ: ' + e } finally { busy.value = '' }
 }
 const saveJson = () => download(new Blob([toJSON()], { type: 'application/json' }), 'quote-project.json')
 async function openJson(e: Event) {
   const el = e.target as HTMLInputElement
-  try { if (el.files?.[0]) fromJSON(await el.files[0].text()) } catch (x: any) { alert(x.message || 'ไฟล์โปรเจกต์ไม่ถูกต้อง') }
+  err.value = ''
+  try { if (el.files?.[0]) fromJSON(await el.files[0].text()) } catch (x: any) { err.value = x instanceof SyntaxError ? 'ไฟล์โปรเจกต์ไม่ถูกต้อง' : x.message }
   el.value = ''
 }
 const doReset = () => { if (confirm('รีเซ็ตโปรเจกต์ทั้งหมดกลับค่าเริ่มต้น?')) reset() }
 const selFile = ref<HTMLInputElement>()
 async function chooseImg(e: Event) {
   const i = e.target as HTMLInputElement, f = i.files?.[0], s = sel.value
-  if (f && s?.kind === 'image') await loadImageInto(s, f).catch(x => alert(x.message))
+  err.value = ''
+  if (f && s?.kind === 'image') await loadImageInto(s, f).catch(x => (err.value = x.message))
   i.value = ''
 }
 </script>
@@ -142,6 +148,7 @@ async function chooseImg(e: Event) {
     <aside class="panel">
       <h1>Quote Page Maker</h1>
       <p v-if="ui.warn" class="warn">{{ ui.warn }}</p>
+      <p v-if="err" class="warn" role="alert">{{ err }}</p>
 
       <details open>
         <summary>หน้า / พื้นหลัง</summary>
@@ -163,7 +170,7 @@ async function chooseImg(e: Event) {
             <label v-if="bg.mode === 'linear'" class="f">มุม <span class="v">{{ bg.angle }}°</span><input type="range" v-model.number="bg.angle" min="0" max="360"></label>
           </template>
           <template v-if="bg.mode === 'image'">
-            <label class="drop">{{ bg.asset ? 'เปลี่ยนรูปพื้นหลัง' : 'เลือกรูปพื้นหลัง' }}<input type="file" accept="image/png,image/jpeg,image/webp" hidden data-testid="bg-file" @change="pickBg"></label>
+            <label class="drop" tabindex="0" @keydown.enter="($event.currentTarget as HTMLElement).querySelector('input')!.click()">{{ bg.asset ? 'เปลี่ยนรูปพื้นหลัง' : 'เลือกรูปพื้นหลัง' }}<input type="file" accept="image/png,image/jpeg,image/webp" hidden data-testid="bg-file" @change="pickBg"></label>
             <label class="f">ซูม <span class="v">{{ bg.zoom }}×</span><input type="range" v-model.number="bg.zoom" min="1" max="4" step="0.01"></label>
             <label class="f">ตำแหน่ง X <span class="v">{{ bg.x }}%</span><input type="range" v-model.number="bg.x" min="0" max="100"></label>
             <label class="f">ตำแหน่ง Y <span class="v">{{ bg.y }}%</span><input type="range" v-model.number="bg.y" min="0" max="100"></label>
@@ -192,7 +199,7 @@ async function chooseImg(e: Event) {
               <label class="f">ชื่อผู้กล่าว (บรรทัดเล็กใต้ข้อความ)<input type="text" v-model="sel.sub" data-testid="text-sub"></label>
             </template>
             <template v-if="sel.kind === 'image'">
-              <label class="drop">{{ sel.asset ? 'เปลี่ยนรูป' : 'เลือกรูป' }}<input ref="selFile" type="file" accept="image/png,image/jpeg,image/webp" hidden data-testid="img-file" @change="chooseImg"></label>
+              <label class="drop" tabindex="0" @keydown.enter="selFile?.click()">{{ sel.asset ? 'เปลี่ยนรูป' : 'เลือกรูป' }}<input ref="selFile" type="file" accept="image/png,image/jpeg,image/webp" hidden data-testid="img-file" @change="chooseImg"></label>
             </template>
             <p v-if="contrastWarn" class="warn" role="status">{{ contrastWarn }}</p>
             <p v-if="dpiWarn" class="warn" role="status">{{ dpiWarn }}</p>
@@ -228,10 +235,10 @@ async function chooseImg(e: Event) {
           <label class="f">ขนาดไฟล์
             <select v-model="size" data-testid="size"><option v-for="(s, k) in SIZES" :key="k" :value="k">{{ s.label }}</option></select>
           </label>
-          <button class="primary" :disabled="!!busy" @click="run('page', () => exportPage(page, assets, size))">บันทึกหน้านี้ (PNG)</button>
-          <button class="primary" :disabled="!!busy" @click="run('tr', () => exportTransparent(page, assets, size))">บันทึกพื้นโปร่งใส (PNG)</button>
-          <button class="primary" :disabled="!!busy" @click="run('zip', () => exportZip(project.pages, assets, size))">บันทึกทุกหน้า (ZIP)</button>
-          <p v-if="busy" class="hint">กำลังสร้างไฟล์…</p>
+          <button class="primary" :disabled="!!busy" @click="run(() => exportPage(page, assets, size))">บันทึกหน้านี้ (PNG)</button>
+          <button class="primary" :disabled="!!busy" @click="run(() => exportTransparent(page, assets, size))">บันทึกพื้นโปร่งใส (PNG)</button>
+          <button class="primary" :disabled="!!busy" @click="run(() => exportZip(project.pages, assets, size, (d, n) => (busy = `กำลังสร้างไฟล์… ${d}/${n}`)))">บันทึกทุกหน้า (ZIP)</button>
+          <p v-if="busy" class="hint" role="status">{{ busy }}</p>
           <hr style="width:100%">
           <button @click="saveJson">บันทึกโปรเจกต์ (.json)</button>
           <label class="drop" tabindex="0" @keydown.enter="($event.currentTarget as HTMLElement).querySelector('input')!.click()">เปิดโปรเจกต์<input type="file" accept=".json,application/json" hidden data-testid="open-json" @change="openJson"></label>

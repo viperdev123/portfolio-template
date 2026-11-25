@@ -81,3 +81,5 @@ input.n { width: 90px; padding: 4px 6px; border: 1px solid var(--line); border-r
   .q-scroll { height: 70vh; }
   .panel { max-height: none; }
 }
+.undo { display: flex; gap: 6px; margin-bottom: 10px; }
+[data-testid=preview] .strip li { cursor: pointer; }

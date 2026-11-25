@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { PAGE_H, PAGE_W } from '../types'
-import { loadProject, saveWarn, state } from '../store'
+import { hist, loadProject, onUndoKey, parseProject, redo, saveProject, saveWarn, state, undo } from '../store'
+import { useFit, useRememberPanels } from '../shared/ui'
 import { PRESETS } from '../presets'
 import { readImage } from '../shared/export'
 import { exportZip } from '../export'
 import { FONTS } from '../quote/fonts'
 import TocCanvas from './TocCanvas.vue'
-import { blankItem, defaultToc, MAX_ITEMS, MIN_ITEMS, type TocLayout } from './model'
+import { blankItem, defaultToc, filledBadge, filledPanel, LAYOUTS, MAX_ITEMS, MIN_ITEMS, specOf, type TocLayout } from './model'
 import { ensureToc, importFromTabs } from './actions'
 import { contrastReport, listRect, resolveColors, sampleBackdrop, type Backdrop } from './palette'
 import { WHITE } from './color'
@@ -17,18 +18,13 @@ import { computeGeo, fontTick, measure } from './layout'
 const t = ensureToc()
 const stage = ref<HTMLElement>()
 const jf = ref<HTMLInputElement>()
-const scale = ref(.4)
+const bgf = ref<HTMLInputElement>()
+const scale = useFit(stage, PAGE_W, PAGE_H)
 const busy = ref('')
-let ro: ResizeObserver
-
-function fit() {
-  const el = stage.value!
-  const tall = getComputedStyle(el).position === 'sticky'
-  const w = el.clientWidth - 32, h = el.clientHeight - 70
-  scale.value = Math.max(.1, Math.min(w / PAGE_W, tall ? h / PAGE_H : Infinity))
-}
-onMounted(() => { fit(); ro = new ResizeObserver(fit); ro.observe(stage.value!) })
-onBeforeUnmount(() => ro?.disconnect())
+const err = ref('')
+useRememberPanels()
+onMounted(() => addEventListener('keydown', onUndoKey))
+onBeforeUnmount(() => removeEventListener('keydown', onUndoKey))
 
 // โหลดฟอนต์ที่เลือก แล้วให้เลย์เอาต์วัดข้อความใหม่
 watch(() => [t.titleFont, t.headingFont, t.numFont], async () => {
@@ -62,28 +58,29 @@ const autoPage = (i: number) => String(t.startPage + i)
 
 async function onBg(e: Event) {
   const el = e.target as HTMLInputElement
-  try { if (el.files?.[0]) { t.bg = (await readImage(el.files[0])).src; t.bgSource = 'own' } } catch (err) { alert(String(err)) }
+  err.value = ''
+  try { if (el.files?.[0]) { t.bg = (await readImage(el.files[0])).src; t.bgSource = 'own' } } catch (x: any) { err.value = x.message }
   el.value = ''
 }
 
-async function run(name: string, fn: () => Promise<void>) {
-  busy.value = name
-  try { await fn() } catch (e) { alert('Export ไม่สำเร็จ: ' + e) } finally { busy.value = '' }
+async function run(fn: () => Promise<void>) {
+  busy.value = 'กำลังสร้างไฟล์…'; err.value = ''
+  try { await fn() } catch (e) { err.value = 'Export ไม่สำเร็จ: ' + e } finally { busy.value = '' }
 }
-function saveJson() {
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(state)], { type: 'application/json' }))
-  a.download = 'portfolio-project.json'; a.click()
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000)
-}
+const zip = () => run(() => exportZip(state, (d, n) => (busy.value = `กำลังสร้างไฟล์… ${d}/${n}`)))
 async function openJson(e: Event) {
   const el = e.target as HTMLInputElement
-  try { if (el.files?.[0]) loadProject(JSON.parse(await el.files[0].text())); ensureToc() } catch { alert('ไฟล์โปรเจกต์ไม่ถูกต้อง') }
+  err.value = ''
+  try {
+    // ไฟล์ที่ไม่มีหน้าสารบัญ: ใช้ค่าเริ่มต้น (loadProject คงอ็อบเจกต์ t เดิมไว้)
+    if (el.files?.[0]) { const p = parseProject(await el.files[0].text()); loadProject({ ...p, toc: p.toc ?? defaultToc() }) }
+  } catch (x: any) { err.value = x.message }
   el.value = ''
 }
 const resetToc = () => { if (confirm('รีเซ็ตหน้าสารบัญกลับค่าเริ่มต้น (รวมรูปพื้นหลังของหน้านี้)?')) Object.assign(t, defaultToc()) }
 
-const layouts: [TocLayout, string][] = [['list', 'A รายการเรียบ'], ['cards', 'B การ์ดโปร่งแสง'], ['circle', 'C เลขในวงกลม']]
+const sp = computed(() => specOf(t))
+const layoutIds = Object.keys(LAYOUTS) as TocLayout[]
 const sliders = [
   ['headingSize', 'ขนาดหัวเรื่อง', 36, 120], ['titleSize', 'ขนาดชื่อหัวข้อ', 22, 60], ['numSize', 'ขนาดเลขลำดับ', 24, 110],
   ['rowGap', 'ระยะห่างระหว่างแถว (px)', 0, 80], ['bottomSafe', 'ระยะปลอดภัยด้านล่าง (px)', 40, 600], ['ruleThick', 'ความหนาเส้น (px)', 1, 8], ['radius', 'ความโค้งมุมการ์ด', 0, 60],
@@ -106,6 +103,11 @@ const colorFields = [
 
     <aside class="panel">
       <h1>หน้าสารบัญ</h1>
+      <div class="undo">
+        <button :disabled="!hist.canUndo" @click="undo" title="ย้อนกลับ (Ctrl+Z)">↶ ย้อน</button>
+        <button :disabled="!hist.canRedo" @click="redo" title="ทำซ้ำ (Ctrl+Shift+Z)">↷ ทำซ้ำ</button>
+      </div>
+      <p v-if="err" class="warn" role="alert">{{ err }}</p>
 
       <details open>
         <summary>รายการ ({{ t.items.length }}/{{ MAX_ITEMS }})</summary>
@@ -125,7 +127,7 @@ const colorFields = [
             </div>
             <input type="text" v-model="it.en" placeholder="ชื่ออังกฤษ (ไม่บังคับ)" aria-label="ชื่ออังกฤษ">
             <input type="text" v-model="it.desc" placeholder="คำอธิบายบรรทัดที่ 2 (ไม่บังคับ)" aria-label="คำอธิบาย">
-            <label v-if="t.perItemColor" class="f row">สีเลขของรายการนี้
+            <label v-if="t.perItemColor" class="f row">{{ filledBadge(sp) ? 'สีป้ายเลขของรายการนี้' : 'สีเลขของรายการนี้' }}
               <span><input type="color" :value="it.color || colors.num" @input="it.color = ($event.target as HTMLInputElement).value">
                 <button v-if="it.color" @click="it.color = ''">ล้าง</button></span></label>
           </div>
@@ -142,12 +144,15 @@ const colorFields = [
       <details open>
         <summary>เลย์เอาต์</summary>
         <div class="group">
-          <div class="presets">
-            <button v-for="[k, name] in layouts" :key="k" :data-layout="k" :class="{ primary: t.layout === k }" @click="t.layout = k">{{ name }}</button>
+          <div class="layouts">
+            <button v-for="k in layoutIds" :key="k" :data-layout="k" :class="{ on: t.layout === k }" :aria-pressed="t.layout === k" @click="t.layout = k">
+              <span class="lthumb" aria-hidden="true"><span class="lths"><TocCanvas :toc="{ ...t, layout: k }" :bg="bg" :colors="colors" /></span></span>
+              <small>{{ LAYOUTS[k].name }}</small>
+            </button>
           </div>
           <label class="f row">กระจายความสูงอัตโนมัติ<input type="checkbox" v-model="t.autoDistribute"></label>
-          <label v-if="t.layout === 'cards'" class="f">ความทึบการ์ด <span class="v">{{ t.cardOpacity }}%</span><input type="range" v-model.number="t.cardOpacity" min="40" max="95"></label>
-          <template v-else>
+          <label v-if="sp.panel && sp.panel !== 'outline'" class="f">ความทึบพื้นแถว <span class="v">{{ t.cardOpacity }}%</span><input type="range" v-model.number="t.cardOpacity" min="40" max="95"></label>
+          <template v-if="!filledPanel(sp)">
             <label class="f row">ม่านช่วยอ่าน (reading veil)<input type="checkbox" data-testid="veil" v-model="t.veil"></label>
             <template v-if="t.veil">
               <label class="f">ความทึบม่าน <span class="v">{{ t.veilOpacity }}%</span><input type="range" v-model.number="t.veilOpacity" min="0" max="100"></label>
@@ -194,13 +199,14 @@ const colorFields = [
       </details>
 
       <details open>
-        <summary>ส่วนตกแต่ง (เปิด/ปิดได้ทุกชิ้น)</summary>
+        <summary>ส่วนตกแต่ง (ของเลย์เอาต์นี้)</summary>
         <div class="group">
-          <label class="f row">เส้นคั่นระหว่างแถว (แบบ A)<input type="checkbox" v-model="t.ruleOn"></label>
-          <label class="f row">แถบสีด้านซ้ายของการ์ด (แบบ B)<input type="checkbox" v-model="t.barOn"></label>
-          <label class="f row">เงาการ์ด (แบบ B)<input type="checkbox" v-model="t.shadow"></label>
-          <label class="f row">เส้นขอบวงกลม (แบบ C)<input type="checkbox" v-model="t.circleOutline"></label>
-          <label class="f row">เส้นขอบแคปซูลเลขหน้า (แบบ C)<input type="checkbox" v-model="t.capsuleOutline"></label>
+          <label v-if="sp.rule" class="f row">เส้นคั่นระหว่างแถว<input type="checkbox" v-model="t.ruleOn"></label>
+          <label v-if="sp.panel === 'card' && sp.badge !== 'block'" class="f row">แถบสีด้านซ้ายของการ์ด<input type="checkbox" v-model="t.barOn"></label>
+          <label v-if="sp.panel === 'card' || sp.panel === 'pill'" class="f row">เงาการ์ด<input type="checkbox" v-model="t.shadow"></label>
+          <label v-if="sp.badge === 'ring'" class="f row">เส้นขอบวงกลม<input type="checkbox" v-model="t.circleOutline"></label>
+          <label v-if="sp.cap && t.showPage" class="f row">เส้นขอบแคปซูลเลขหน้า<input type="checkbox" v-model="t.capsuleOutline"></label>
+          <p class="hint">เส้นนำสายตาและความหนาเส้นอยู่ในหัวข้อ "ตัวอักษรและสี"</p>
         </div>
       </details>
 
@@ -214,7 +220,7 @@ const colorFields = [
               <option value="none">ไม่มีรูป (พื้นขาว)</option>
             </select>
           </label>
-          <label class="drop" tabindex="0">อัปโหลดรูปเฉพาะหน้านี้<input type="file" accept="image/*" hidden data-testid="toc-bg-input" @change="onBg"></label>
+          <label class="drop" tabindex="0" @keydown.enter="bgf?.click()">อัปโหลดรูปเฉพาะหน้านี้<input ref="bgf" type="file" accept="image/png,image/jpeg,image/webp" hidden data-testid="toc-bg-input" @change="onBg"></label>
           <template v-if="bg">
             <label class="f">ซูม <span class="v">{{ t.bgZoom.toFixed(2) }}×</span><input type="range" v-model.number="t.bgZoom" min="1" max="3" step="0.01"></label>
             <label class="f">ตำแหน่งแนวนอน <span class="v">{{ t.bgX }}%</span><input type="range" v-model.number="t.bgX" min="0" max="100"></label>
@@ -236,14 +242,13 @@ const colorFields = [
       <details open>
         <summary>บันทึก</summary>
         <div class="group btns">
-          <button class="primary" :disabled="!!busy" data-testid="export-png" @click="run('png', () => exportToc(t, state.bg))">หน้าสารบัญ (PNG)</button>
-          <button class="primary" :disabled="!!busy" data-testid="export-transparent" @click="run('tr', () => exportTocTransparent(t, state.bg))">หน้าสารบัญ (PNG พื้นหลังโปร่งใส)</button>
+          <button class="primary" :disabled="!!busy" data-testid="export-png" @click="run(() => exportToc(t, state.bg))">หน้าสารบัญ (PNG)</button>
+          <button class="primary" :disabled="!!busy" data-testid="export-transparent" @click="run(() => exportTocTransparent(t, state.bg))">หน้าสารบัญ (PNG พื้นหลังโปร่งใส)</button>
           <label class="f row">รวมหน้าสารบัญเป็นไฟล์แรกใน ZIP ทุกหน้า<input type="checkbox" v-model="t.inZip"></label>
-          <button class="primary" :disabled="!!busy || !state.highlight" data-testid="export-zip" @click="run('zip', () => exportZip(state))">บันทึกทุกหน้า (ZIP)</button>
-          <p v-if="!state.highlight" class="hint">ZIP ใช้ได้เมื่อเปิด "ไฮไลต์แถบ active" ในเครื่องมือแถบสารบัญ</p>
-          <p v-if="busy" class="hint">กำลังสร้างไฟล์…</p>
+          <button class="primary" :disabled="!!busy" data-testid="export-zip" @click="zip">บันทึกทุกหน้า (ZIP)</button>
+          <p v-if="busy" class="hint" role="status">{{ busy }}</p>
           <hr style="width:100%">
-          <button @click="saveJson">บันทึกโปรเจกต์ (.json)</button>
+          <button @click="saveProject">บันทึกโปรเจกต์ (.json)</button>
           <label class="drop" tabindex="0" @keydown.enter="jf?.click()">เปิดโปรเจกต์
             <input ref="jf" type="file" accept=".json,application/json" hidden @change="openJson">
           </label>
@@ -258,4 +263,9 @@ const colorFields = [
 input.num { width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; font: inherit; }
 .grid input[type=text]:first-child { width: 60px; }
 .tabrow .grid { grid-template-columns: 60px 1fr 60px; }
+.layouts { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; }
+.layouts button { display: grid; justify-items: center; gap: 4px; padding: 4px; }
+.layouts button.on { outline: 3px solid var(--gold); }
+.lthumb { width: 81px; height: 115px; overflow: hidden; display: block; background: #fff; }
+.lths { display: block; transform: scale(.065); transform-origin: 0 0; width: 1240px; height: 1754px; pointer-events: none; }
 </style>

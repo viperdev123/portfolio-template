@@ -78,7 +78,10 @@ ok((await page.evaluate(async () => (await import('/src/store.ts')).state.toc.it
 
 // ===== 3) จำนวนรายการ x เลย์เอาต์: ความสูงเท่ากัน / เส้นแนวตั้งตรง / ช่องว่างล่าง =====
 await setToc({ numerals: 'thai', showPage: true, layout: 'list' })
-for (const layout of ['list', 'cards', 'circle']) {
+const SPECS = await page.evaluate(async () => (await import('/src/toc/model.ts')).LAYOUTS)
+const LAYOUT_IDS = Object.keys(SPECS)
+const filled = l => ['card', 'pill', 'zebra'].includes(SPECS[l].panel)
+for (const layout of LAYOUT_IDS) {
   for (const n of [3, 4, 6, 8, 10]) {
     await setToc({ layout }); await setItems(n, false)
     const g = await geo()
@@ -88,7 +91,7 @@ for (const layout of ['list', 'cards', 'circle']) {
     ok(Math.abs((topGap - contentTop) - (1754 - 150 - (g.groupTop + g.groupH))) <= 2 && (g.groupH >= (1754 - 150 - contentTop) * .55),
       `${layout} n=${n}: กลุ่มอยู่กึ่งกลางพื้นที่เนื้อหา ไม่กองบน (บน ${topGap - contentTop}px ล่าง ${1754 - 150 - (g.groupTop + g.groupH)}px, กลุ่มใช้ ${Math.round(g.groupH / (1754 - 150 - contentTop) * 100)}% ของพื้นที่)`)
     ok(g.groupTop + g.groupH <= 1754 - 150 + 1, `${layout} n=${n}: ไม่ล้ำขอบล่างปลอดภัย`)
-    const nums = layout === 'circle' ? await rects('circle') : await rects('num')
+    const nums = SPECS[layout].badge ? await rects('circle') : await rects('num')
     const titles = await rects('title'), pages = layout === 'circle' ? await rects('page') : await rects('page')
     const tol = 1.2
     const firstTitles = titles.filter((r, i, a) => a.findIndex(x => Math.abs(x.l - r.l) < 1 && x.t <= r.t) === i)
@@ -111,7 +114,7 @@ for (const layout of ['list', 'cards', 'circle']) {
 }
 
 // ===== 4) ชื่อยาว / ยาวมาก =====
-for (const layout of ['list', 'cards', 'circle']) {
+for (const layout of LAYOUT_IDS) {
   await setToc({ layout, leader: 'dots' }); await setItems(6, true)
   const titles = await rects('title'), pages = await rects('page')
   const maxT = Math.max(...titles.map(r => r.r)), minP = Math.min(...pages.map(r => r.l))
@@ -202,11 +205,11 @@ for (const veil of [false, true]) {
   await shot(`wat-arun-veil-${veil ? 'on' : 'off'}`)
 }
 
-// ===== 6) 3 เลย์เอาต์ x ทุกพรีเซ็ต (+ ภาพวัดอรุณ) =====
+// ===== 6) ทุกเลย์เอาต์ x ทุกพรีเซ็ต (+ ภาพวัดอรุณ) =====
 const np = await page.evaluate(async () => (await import('/src/presets.ts')).PRESETS.length)
 await setToc({ veil: false })
-for (const src of ['none', 'shared']) for (const layout of ['list', 'cards', 'circle']) for (let p = 0; p < np; p++) {
-  await setToc({ bgSource: src, layout, preset: p, bottomSafe: src === 'shared' ? 330 : 150, veil: layout !== 'cards' && src === 'shared' })
+for (const src of ['none', 'shared']) for (const layout of LAYOUT_IDS) for (let p = 0; p < np; p++) {
+  await setToc({ bgSource: src, layout, preset: p, bottomSafe: src === 'shared' ? 330 : 150, veil: !filled(layout) && src === 'shared' })
   const r = await page.evaluate(async () => {
     const m = await import('/src/store.ts'), P = await import('/src/toc/palette.ts'), t = m.state.toc
     const bd = await P.sampleBackdrop(t.bgSource === 'shared' ? m.state.bg : '', t.bgX, t.bgY, t.bgZoom)
